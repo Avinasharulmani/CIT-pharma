@@ -1,0 +1,21 @@
+INFO:     Started server process [23224]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+Loading weights:   0%|          | 0/788 [00:00<?, ?it/s]Loading weights:  52%|#####2    | 410/788 [00:00<00:00, 4087.24it/s]Loading weights: 100%|##########| 788/788 [00:00<00:00, 5227.68it/s]
+[1mBlipForQuestionAnswering LOAD REPORT[0m from: Salesforce/blip-vqa-base
+Key                                       | Status     |  | 
+------------------------------------------+------------+--+-
+text_decoder.bert.embeddings.position_ids | UNEXPECTED |  | 
+text_encoder.embeddings.position_ids      | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|##########| 103/103 [00:00<00:00, 5899.24it/s]
+[1mBertModel LOAD REPORT[0m from: sentence-transformers/all-MiniLM-L6-v2
+Key                     | Status     |  | 
+------------------------+------------+--+-
+embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.

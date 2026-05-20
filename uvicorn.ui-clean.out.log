@@ -1,0 +1,2 @@
+INFO:     127.0.0.1:62200 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62200 - "GET /api/current-user HTTP/1.1" 200 OK

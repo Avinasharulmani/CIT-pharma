@@ -1,0 +1,12 @@
+INFO:     127.0.0.1:57351 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61843 - "POST /api/upload-material HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61843 - "GET /api/review-comments?asset_id=d7aefdf72daa481e81a179659f3ea3e7_medicines_information&file_hash=3010efa30dc2d733cee2e45c52df83ebef21658732c70afc1c9876ca0670d326 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61843 - "POST /api/analyze-jobs-json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61843 - "GET /api/analyze-jobs/7dafc6cd6ee44edfacbec44de5f02f33 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61843 - "GET /api/analyze-jobs/7dafc6cd6ee44edfacbec44de5f02f33 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61843 - "GET /api/analyze-jobs/7dafc6cd6ee44edfacbec44de5f02f33 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61843 - "GET /api/analyze-jobs/7dafc6cd6ee44edfacbec44de5f02f33 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61843 - "GET /api/analyze-jobs/7dafc6cd6ee44edfacbec44de5f02f33 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61843 - "GET /api/analyze-jobs/7dafc6cd6ee44edfacbec44de5f02f33 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50953 - "GET /api/review-comments?asset_id=d7aefdf72daa481e81a179659f3ea3e7_medicines_information&file_hash=3010efa30dc2d733cee2e45c52df83ebef21658732c70afc1c9876ca0670d326 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61843 - "GET /api/material-preview/d7aefdf72daa481e81a179659f3ea3e7_medicines_information?start=1&count=1&quality=thumb HTTP/1.1" 200 OK

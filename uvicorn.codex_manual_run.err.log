@@ -1,0 +1,51 @@
+INFO:     Started server process [33828]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8100 (Press CTRL+C to quit)
+Loading weights:   0%|          | 0/473 [00:00<?, ?it/s]Loading weights:  74%|#######4  | 352/473 [00:00<00:00, 3516.16it/s]
+Loading weights:   0%|          | 0/473 [00:00<?, ?it/s][ALoading weights: 100%|##########| 473/473 [00:00<00:00, 2859.09it/s]
+Loading weights: 100%|##########| 473/473 [00:00<00:00, 8557.37it/s]
+[1mBlipForConditionalGeneration LOAD REPORT[0m from: Salesforce/blip-image-captioning-base
+Key                                       | Status     |  | 
+------------------------------------------+------------+--+-
+text_decoder.bert.embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+[1mBlipForConditionalGeneration LOAD REPORT[0m from: Salesforce/blip-image-captioning-base
+Key                                       | Status     |  | 
+------------------------------------------+------------+--+-
+text_decoder.bert.embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+Loading weights:   0%|          | 0/788 [00:00<?, ?it/s]Loading weights:  29%|##9       | 229/788 [00:00<00:00, 2287.90it/s]Loading weights:  58%|#####8    | 458/788 [00:00<00:00, 1953.62it/s]Loading weights: 100%|##########| 788/788 [00:00<00:00, 2789.26it/s]
+[1mBlipForQuestionAnswering LOAD REPORT[0m from: Salesforce/blip-vqa-base
+Key                                       | Status     | 
+------------------------------------------+------------+-
+text_encoder.embeddings.position_ids      | UNEXPECTED | 
+text_decoder.bert.embeddings.position_ids | UNEXPECTED | 
+text_decoder.cls.predictions.decoder.bias | MISSING    | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+- MISSING:	those params were newly initialized because missing from the checkpoint. Consider training on your downstream task.
+Loading weights:   0%|          | 0/788 [00:00<?, ?it/s]Loading weights:  26%|##6       | 208/788 [00:00<00:00, 2070.11it/s]Loading weights: 100%|#########9| 786/788 [00:00<00:00, 4247.14it/s]Loading weights: 100%|##########| 788/788 [00:00<00:00, 3781.61it/s]
+[1mBlipForQuestionAnswering LOAD REPORT[0m from: Salesforce/blip-vqa-base
+Key                                       | Status     | 
+------------------------------------------+------------+-
+text_encoder.embeddings.position_ids      | UNEXPECTED | 
+text_decoder.bert.embeddings.position_ids | UNEXPECTED | 
+text_decoder.cls.predictions.decoder.bias | MISSING    | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+- MISSING:	those params were newly initialized because missing from the checkpoint. Consider training on your downstream task.
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|##########| 103/103 [00:00<00:00, 4126.04it/s]
+[1mBertModel LOAD REPORT[0m from: sentence-transformers/all-MiniLM-L6-v2
+Key                     | Status     |  | 
+------------------------+------------+--+-
+embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.

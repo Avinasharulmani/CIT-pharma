@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Runtime uploads, generated outputs, and reports
+uploads/
+outputs/
+reports/
+scratch/
+
+# Server/runtime logs
+*.log
+uvicorn*.out
+uvicorn*.err
+streamlit*.out
+streamlit*.err
+
+# Temporary/generated media and analysis artifacts
+temp_*
+*_response.json
+scratch_served.html
+
+# Local databases and caches
+*.sqlite
+*.sqlite3
+*.db
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

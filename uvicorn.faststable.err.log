@@ -1,0 +1,23 @@
+INFO:     Started server process [27492]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+  0%|          | 0/3094 [00:00<?, ?frames/s] 84%|########4 | 2600/3094 [00:08<00:01, 306.54frames/s] 84%|########4 | 2600/3094 [00:09<00:01, 283.09frames/s]
+Loading weights:   0%|          | 0/788 [00:00<?, ?it/s]Loading weights:  40%|####      | 318/788 [00:00<00:00, 3164.27it/s]Loading weights: 100%|##########| 788/788 [00:00<00:00, 5467.49it/s]
+[1mBlipForQuestionAnswering LOAD REPORT[0m from: Salesforce/blip-vqa-base
+Key                                       | Status     |  | 
+------------------------------------------+------------+--+-
+text_encoder.embeddings.position_ids      | UNEXPECTED |  | 
+text_decoder.bert.embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+Loading weights:   0%|          | 0/473 [00:00<?, ?it/s]Loading weights: 100%|##########| 473/473 [00:00<00:00, 12900.68it/s]
+[1mBlipForConditionalGeneration LOAD REPORT[0m from: Salesforce/blip-image-captioning-base
+Key                                       | Status     |  | 
+------------------------------------------+------------+--+-
+text_decoder.bert.embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.

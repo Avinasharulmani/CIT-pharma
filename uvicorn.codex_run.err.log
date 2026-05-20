@@ -1,0 +1,23 @@
+INFO:     Started server process [3604]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+  0%|          | 0/4397 [00:00<?, ?frames/s] 50%|#####     | 2200/4397 [00:01<00:01, 1935.04frames/s]100%|##########| 4397/4397 [00:05<00:00, 667.58frames/s] 100%|##########| 4397/4397 [00:05<00:00, 739.38frames/s]
+Loading weights:   0%|          | 0/788 [00:00<?, ?it/s]Loading weights:  41%|####      | 322/788 [00:00<00:00, 3213.62it/s]Loading weights: 100%|##########| 788/788 [00:00<00:00, 5058.10it/s]
+[1mBlipForQuestionAnswering LOAD REPORT[0m from: Salesforce/blip-vqa-base
+Key                                       | Status     |  | 
+------------------------------------------+------------+--+-
+text_encoder.embeddings.position_ids      | UNEXPECTED |  | 
+text_decoder.bert.embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+Loading weights:   0%|          | 0/473 [00:00<?, ?it/s]Loading weights: 100%|##########| 473/473 [00:00<00:00, 19733.29it/s]
+[1mBlipForConditionalGeneration LOAD REPORT[0m from: Salesforce/blip-image-captioning-base
+Key                                       | Status     |  | 
+------------------------------------------+------------+--+-
+text_decoder.bert.embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+  0%|          | 0/1502 [00:00<?, ?frames/s]100%|##########| 1502/1502 [00:02<00:00, 504.40frames/s]100%|##########| 1502/1502 [00:02<00:00, 503.11frames/s]

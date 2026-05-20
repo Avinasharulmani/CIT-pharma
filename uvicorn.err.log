@@ -1,0 +1,72 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\site-packages\uvicorn\__main__.py", line 4, in <module>
+    uvicorn.main()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\site-packages\click\core.py", line 1161, in __call__
+    return self.main(*args, **kwargs)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\site-packages\click\core.py", line 1082, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\site-packages\click\core.py", line 1443, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\site-packages\click\core.py", line 788, in invoke
+    return __callback(*args, **kwargs)
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\site-packages\uvicorn\main.py", line 441, in main
+    run(
+    ~~~^
+        app,
+        ^^^^
+    ...<48 lines>...
+        reset_contextvars=reset_contextvars,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\site-packages\uvicorn\main.py", line 617, in run
+    server.run()
+    ~~~~~~~~~~^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\site-packages\uvicorn\server.py", line 75, in run
+    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 725, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\site-packages\uvicorn\server.py", line 79, in serve
+    await self._serve(sockets)
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\site-packages\uvicorn\server.py", line 86, in _serve
+    config.load()
+    ~~~~~~~~~~~^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\site-packages\uvicorn\config.py", line 449, in load
+    self.loaded_app = import_from_string(self.app)
+                      ~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\site-packages\uvicorn\importer.py", line 19, in import_from_string
+    module = importlib.import_module(module_str)
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\importlib\__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 1026, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "C:\Users\Asus\OneDrive\Desktop\pharma_intelligence_fastapi - Copy\pharma_intelligence_fastapi\app.py", line 27, in <module>
+    from pharma_intelligence.services import analyze_file
+  File "C:\Users\Asus\OneDrive\Desktop\pharma_intelligence_fastapi - Copy\pharma_intelligence_fastapi\pharma_intelligence\services\__init__.py", line 1, in <module>
+    from .intelligence_service import analyze_file
+  File "C:\Users\Asus\OneDrive\Desktop\pharma_intelligence_fastapi - Copy\pharma_intelligence_fastapi\pharma_intelligence\services\intelligence_service.py", line 7, in <module>
+    from ..extractors import (
+    ...<5 lines>...
+    )
+  File "C:\Users\Asus\OneDrive\Desktop\pharma_intelligence_fastapi - Copy\pharma_intelligence_fastapi\pharma_intelligence\extractors\__init__.py", line 1, in <module>
+    from .pdf_processor import extract_pdf
+  File "C:\Users\Asus\OneDrive\Desktop\pharma_intelligence_fastapi - Copy\pharma_intelligence_fastapi\pharma_intelligence\extractors\pdf_processor.py", line 7, in <module>
+    from .image_processor import describe_pil_image_content
+ImportError: cannot import name 'describe_pil_image_content' from 'pharma_intelligence.extractors.image_processor' (C:\Users\Asus\OneDrive\Desktop\pharma_intelligence_fastapi - Copy\pharma_intelligence_fastapi\pharma_intelligence\extractors\image_processor.py)

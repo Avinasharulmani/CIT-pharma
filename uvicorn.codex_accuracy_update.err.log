@@ -1,0 +1,25 @@
+INFO:     Started server process [8564]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+  0%|          | 0/6806 [00:00<?, ?frames/s] 41%|####1     | 2800/6806 [00:04<00:06, 636.51frames/s] 79%|#######8  | 5364/6806 [00:07<00:01, 775.99frames/s]100%|##########| 6806/6806 [00:08<00:00, 819.53frames/s]100%|##########| 6806/6806 [00:08<00:00, 782.93frames/s]
+Loading weights:   0%|          | 0/473 [00:00<?, ?it/s]Loading weights: 100%|##########| 473/473 [00:00<00:00, 20595.10it/s]
+[1mBlipForConditionalGeneration LOAD REPORT[0m from: Salesforce/blip-image-captioning-base
+Key                                       | Status     |  | 
+------------------------------------------+------------+--+-
+text_decoder.bert.embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+Loading weights:   0%|          | 0/788 [00:00<?, ?it/s]Loading weights:  49%|####9     | 390/788 [00:00<00:00, 3895.87it/s]Loading weights: 100%|##########| 788/788 [00:00<00:00, 5034.81it/s]
+[1mBlipForQuestionAnswering LOAD REPORT[0m from: Salesforce/blip-vqa-base
+Key                                       | Status     |  | 
+------------------------------------------+------------+--+-
+text_encoder.embeddings.position_ids      | UNEXPECTED |  | 
+text_decoder.bert.embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+  0%|          | 0/4397 [00:00<?, ?frames/s] 50%|#####     | 2200/4397 [00:00<00:00, 6361.83frames/s]100%|##########| 4397/4397 [00:03<00:00, 1123.18frames/s]100%|##########| 4397/4397 [00:03<00:00, 1281.33frames/s]
+  0%|          | 0/11814 [00:00<?, ?frames/s] 25%|##4       | 2916/11814 [00:02<00:07, 1255.13frames/s] 49%|####8     | 5780/11814 [00:05<00:05, 1079.69frames/s] 72%|#######1  | 8480/11814 [00:08<00:03, 1030.85frames/s] 95%|#########5| 11230/11814 [00:10<00:00, 1053.77frames/s]100%|##########| 11814/11814 [00:10<00:00, 1072.34frames/s]100%|##########| 11814/11814 [00:10<00:00, 1074.66frames/s]
+  0%|          | 0/7567 [00:00<?, ?frames/s] 38%|###8      | 2900/7567 [00:04<00:06, 703.36frames/s] 74%|#######4  | 5600/7567 [00:08<00:02, 676.20frames/s]100%|##########| 7567/7567 [00:11<00:00, 686.32frames/s]100%|##########| 7567/7567 [00:11<00:00, 686.27frames/s]
