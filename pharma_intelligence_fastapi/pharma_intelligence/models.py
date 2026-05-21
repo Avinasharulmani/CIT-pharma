@@ -43,6 +43,7 @@ class BaseIntelligenceResponse(BaseModel):
     summary_available: bool = False
     key_message_matches: List[KeyMessageMatch] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    accuracy_report: Optional[dict] = None
 
 
 class ErrorResponse(BaseModel):

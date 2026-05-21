@@ -1,6 +1,7 @@
 import shutil
 import re
 import importlib.util
+import os
 import tempfile
 from functools import lru_cache
 from pathlib import Path
@@ -18,9 +19,10 @@ from ..config import (
     LOCAL_IMAGE_DESCRIPTION_ENABLED,
 )
 from ..models import SourceChunk
+from ..preprocessing import preprocess_image
 from ..utils import clean_text
 from ..vision_activity import describe_visible_activity, pil_image_to_data_url
-from .ocr_utils import ocr_available, run_ocr_on_image
+from .ocr_utils import ocr_available, run_ocr_on_image, run_ocr_on_image_path
 from .text_quality import extraction_unit_metadata
 
 
@@ -588,88 +590,97 @@ def extract_image(path: Path) -> List[SourceChunk]:
         raise RuntimeError("Pillow is required for image extraction. Install with: pip install pillow") from exc
 
     image = Image.open(str(path))
-    segments = _document_image_segments(image)
-    if len(segments) > 1:
-        chunks: List[SourceChunk] = []
-        for source_no, segment in segments:
-            ocr_result = run_ocr_on_image(segment)
-            ocr_text, ocr_engine = ocr_result.text, ocr_result.engine
-            warnings = list(ocr_result.warnings or [])
-            if not ocr_text:
-                warnings.append("no OCR text found in image segment")
-            chunks.append(
-                SourceChunk(
-                    source_no=source_no,
-                    source_type="page",
-                    text=ocr_text,
-                    metadata={
-                        **extraction_unit_metadata(
-                            source_type="image_segment",
-                            unit_number=source_no,
-                            raw_text=ocr_text,
-                            cleaned_text=ocr_text,
-                            extraction_method=f"{ocr_engine or 'ocr'}:{ocr_result.selected_variant or 'none'}",
-                            confidence_score=ocr_result.confidence_score,
-                            warnings=warnings,
-                        ),
-                        "width": segment.size[0],
-                        "height": segment.size[1],
-                        "ocr_available": bool(ocr_text or ocr_available()),
-                        "ocr_text_found": bool(ocr_text),
-                        "ocr_engine": ocr_engine,
-                        "ocr_text": ocr_text,
-                        "selected_variant": ocr_result.selected_variant,
-                        "confidence_score": ocr_result.confidence_score,
-                        "image_segmented": True,
-                        "warnings": warnings,
-                    },
+    preprocessed_path = preprocess_image(str(path))
+    try:
+        ocr_image = Image.open(preprocessed_path) if preprocessed_path != str(path) else image
+        segments = _document_image_segments(ocr_image)
+        if len(segments) > 1:
+            chunks: List[SourceChunk] = []
+            for source_no, segment in segments:
+                ocr_result = run_ocr_on_image(segment)
+                ocr_text, ocr_engine = ocr_result.text, ocr_result.engine
+                warnings = list(ocr_result.warnings or [])
+                if not ocr_text:
+                    warnings.append("no OCR text found in image segment")
+                chunks.append(
+                    SourceChunk(
+                        source_no=source_no,
+                        source_type="page",
+                        text=ocr_text,
+                        metadata={
+                            **extraction_unit_metadata(
+                                source_type="image_segment",
+                                unit_number=source_no,
+                                raw_text=ocr_text,
+                                cleaned_text=ocr_text,
+                                extraction_method=f"{ocr_engine or 'ocr'}:{ocr_result.selected_variant or 'none'}",
+                                confidence_score=ocr_result.confidence_score,
+                                warnings=warnings,
+                            ),
+                            "width": image.size[0],
+                            "height": image.size[1],
+                            "ocr_available": bool(ocr_text or ocr_available()),
+                            "ocr_text_found": bool(ocr_text),
+                            "ocr_engine": ocr_engine,
+                            "ocr_text": ocr_text,
+                            "selected_variant": ocr_result.selected_variant,
+                            "confidence_score": ocr_result.confidence_score,
+                            "image_segmented": True,
+                            "warnings": warnings,
+                        },
+                    )
                 )
-            )
-        return chunks
+            return chunks
 
-    ocr_result = run_ocr_on_image(image)
-    ocr_text, ocr_engine = ocr_result.text, ocr_result.engine
-    warnings = []
-    warnings.extend(ocr_result.warnings or [])
-    if not ocr_text:
-        warnings.append("no OCR text found")
-    description = describe_pil_image_content(image, warnings, allow_local_fallback=False)
-    if not description and LOCAL_IMAGE_DESCRIPTION_ENABLED:
-        description = (
-            _local_vlm_best_image_description(image, ocr_text)
-            or _local_vlm_activity_description(image, require_person=False)
-            or _local_vlm_scene_description(image)
-        )
-    description = _prefer_ocr_material_description(description, ocr_text)
-    if description:
-        warnings = [warning for warning in warnings if not str(warning).startswith("Exact visual activity description")]
-    has_ocr_available = bool(ocr_text or ocr_available())
-    return [
-        SourceChunk(
-            source_no=1,
-            source_type="image",
-            text=ocr_text,
-            description_of_image_video=description,
-            metadata={
-                **extraction_unit_metadata(
-                    source_type="image",
-                    unit_number=1,
-                    raw_text=ocr_text,
-                    cleaned_text=ocr_text,
-                    extraction_method=f"{ocr_engine or 'ocr'}:{ocr_result.selected_variant or 'none'}",
-                    confidence_score=ocr_result.confidence_score,
-                    warnings=warnings,
-                ),
-                "width": image.size[0],
-                "height": image.size[1],
-                "ocr_available": has_ocr_available,
-                "ocr_text_found": bool(ocr_text),
-                "ocr_engine": ocr_engine,
-                "ocr_text": ocr_text,
-                "image_description": description,
-                "selected_variant": ocr_result.selected_variant,
-                "confidence_score": ocr_result.confidence_score,
-                "warnings": warnings,
-            },
-        )
-    ]
+        ocr_result = run_ocr_on_image_path(preprocessed_path)
+        ocr_text, ocr_engine = ocr_result.text, ocr_result.engine
+        warnings = []
+        warnings.extend(ocr_result.warnings or [])
+        if not ocr_text:
+            warnings.append("no OCR text found")
+        description = describe_pil_image_content(image, warnings, allow_local_fallback=False)
+        if not description and LOCAL_IMAGE_DESCRIPTION_ENABLED:
+            description = (
+                _local_vlm_best_image_description(image, ocr_text)
+                or _local_vlm_activity_description(image, require_person=False)
+                or _local_vlm_scene_description(image)
+            )
+        description = _prefer_ocr_material_description(description, ocr_text)
+        if description:
+            warnings = [warning for warning in warnings if not str(warning).startswith("Exact visual activity description")]
+        has_ocr_available = bool(ocr_text or ocr_available())
+        return [
+            SourceChunk(
+                source_no=1,
+                source_type="image",
+                text=ocr_text,
+                description_of_image_video=description,
+                metadata={
+                    **extraction_unit_metadata(
+                        source_type="image",
+                        unit_number=1,
+                        raw_text=ocr_text,
+                        cleaned_text=ocr_text,
+                        extraction_method=f"{ocr_engine or 'ocr'}:{ocr_result.selected_variant or 'none'}",
+                        confidence_score=ocr_result.confidence_score,
+                        warnings=warnings,
+                    ),
+                    "width": image.size[0],
+                    "height": image.size[1],
+                    "ocr_available": has_ocr_available,
+                    "ocr_text_found": bool(ocr_text),
+                    "ocr_engine": ocr_engine,
+                    "ocr_text": ocr_text,
+                    "image_description": description,
+                    "selected_variant": ocr_result.selected_variant,
+                    "confidence_score": ocr_result.confidence_score,
+                    "warnings": warnings,
+                },
+            )
+        ]
+    finally:
+        if preprocessed_path != str(path):
+            try:
+                os.remove(preprocessed_path)
+            except Exception:
+                pass

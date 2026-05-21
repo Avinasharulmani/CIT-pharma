@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from ..config import IMAGE_EASYOCR_ENABLED
+from ..accuracy.engine import get_best_ocr_text
+from ..ocr.google_vision_ocr import is_vision_available
 from ..utils import clean_text
 from .text_quality import merge_text_blocks, text_quality_score
 
@@ -40,7 +42,7 @@ class OCRResult:
 
 
 def ocr_available() -> bool:
-    return bool(shutil.which("tesseract") or (IMAGE_EASYOCR_ENABLED and importlib.util.find_spec("easyocr")))
+    return bool(is_vision_available() or shutil.which("tesseract") or (IMAGE_EASYOCR_ENABLED and importlib.util.find_spec("easyocr")))
 
 
 def preprocess_image_variants(image) -> list[tuple[str, Any]]:
@@ -201,6 +203,28 @@ def _ocr_easyocr_image(image) -> OCRResult:
         return OCRResult(warnings=[f"EasyOCR failed: {exc}"])
 
 
+def run_ocr_on_image_path(image_path: str) -> OCRResult:
+    text, confidence, engine = get_best_ocr_text(image_path)
+    selected_variant = "document_text_detection" if engine == "google_vision" else "image_to_string"
+    return _scored_result(
+        text=text,
+        engine=engine,
+        selected_variant=selected_variant,
+        confidence_score=round(confidence * 100.0, 2),
+    )
+
+
+def _ocr_best_engine_image(image) -> OCRResult:
+    try:
+        with tempfile.TemporaryDirectory() as folder:
+            image_path = Path(folder) / "ocr.png"
+            image.convert("RGB").save(image_path)
+            return run_ocr_on_image_path(str(image_path))
+    except Exception as exc:
+        logger.debug("OCR failed: %s", exc)
+        return OCRResult(warnings=[f"OCR failed: {exc}"])
+
+
 def _scored_result(
     *,
     text: str,
@@ -248,6 +272,11 @@ def run_ocr_on_image(image, *, configs: list[str] | None = None, fast: bool = Fa
     if configs is None:
         configs = ["--psm 6"] if fast else ["--psm 6", "--psm 11", "--psm 4"]
     results: list[OCRResult] = []
+    best_engine_result = _ocr_best_engine_image(image)
+    if best_engine_result.text:
+        return best_engine_result
+    if best_engine_result.warnings:
+        results.append(best_engine_result)
     if shutil.which("tesseract"):
         variants = preprocess_image_variants(image)
         if fast:

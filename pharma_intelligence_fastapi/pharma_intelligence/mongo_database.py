@@ -9,6 +9,11 @@ db = client[MONGODB_DB]
 key_messages_collection = db["key_messages"]
 analysis_results_collection = db["analysis_results"]
 review_annotations_collection = db["review_annotations"]
+model_accuracy_history_collection = db["model_accuracy_history"]
+pharma_drug_names_collection = db["pharma_drug_names"]
+pharma_terms_collection = db["pharma_terms"]
+pharma_dosage_units_collection = db["pharma_dosage_units"]
+ocr_error_patterns_collection = db["ocr_error_patterns"]
 
 
 def init_mongo() -> None:
@@ -31,3 +36,9 @@ def init_mongo() -> None:
     review_annotations_collection.create_index([("asset_id", 1), ("content_version_id", 1), ("created_at", -1)])
     review_annotations_collection.create_index([("file_hash", 1), ("created_at", -1)])
     review_annotations_collection.create_index("status")
+    model_accuracy_history_collection.create_index("model_name")
+    model_accuracy_history_collection.create_index([("model_name", 1), ("is_measured", 1)])
+    for collection in (pharma_drug_names_collection, pharma_terms_collection, pharma_dosage_units_collection):
+        collection.create_index([("term", 1), ("active", 1)])
+        collection.create_index("source")
+    ocr_error_patterns_collection.create_index([("pattern", 1), ("replacement", 1), ("context", 1), ("active", 1)])

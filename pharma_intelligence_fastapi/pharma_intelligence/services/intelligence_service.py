@@ -1,9 +1,26 @@
 from pathlib import Path
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import logging
+import os
 import re
+import tempfile
 from typing import List, Optional
 
-from ..config import DEFAULT_TOP_K, DEFAULT_TARGET_LANGUAGE, MAX_CHARS_FOR_MAPPING, NO_SPEECH_MESSAGE, NO_SUMMARY_MESSAGE, SUPPORTED_FILE_TYPES
+from ..config import DEFAULT_TOP_K, DEFAULT_TARGET_LANGUAGE, MAX_CHARS_FOR_MAPPING, NO_SPEECH_MESSAGE, NO_SUMMARY_MESSAGE, SUPPORTED_FILE_TYPES, UPLOAD_DIR, VIDEO_FRAME_SAMPLE_SECONDS, VIDEO_MAX_OCR_FRAMES
+from ..accuracy.engine import (
+    compute_cer,
+    compute_wer,
+    get_easyocr_confidence,
+    get_best_ocr_text,
+    get_tesseract_confidence,
+    get_tesseract_text,
+    load_reference_file,
+    load_reference_transcript,
+    normalize_whisper_confidence,
+)
+from ..accuracy.report_builder import build_report
+from ..correction.text_corrector import correct_extracted_text
 from ..extractors import (
     extract_document,
     extract_email,
@@ -22,6 +39,8 @@ from ..key_messages import load_key_messages
 from ..keywords import extract_keywords
 from ..language import detect_language, translate_text
 from ..models import BaseIntelligenceResponse, SourceChunk
+from ..mongo_database import db as mongo_db
+from ..preprocessing import preprocess_image
 from ..utils import clean_text, compact_join, detect_file_type, get_file_type_config, remove_repetition
 from ..extractors.text_quality import extraction_unit_metadata
 from .mapping_service import match_key_messages
@@ -29,6 +48,15 @@ from .summary_service import generate_content_metadata, generate_content_summary
 
 
 logger = logging.getLogger(__name__)
+
+
+def _run_async_blocking(coro):
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(lambda: asyncio.run(coro)).result()
 
 
 def _extract_by_file_type(path: Path, file_type: str, page_slide_number: Optional[int]) -> List[SourceChunk]:
@@ -95,6 +123,7 @@ def _extract_by_file_type(path: Path, file_type: str, page_slide_number: Optiona
                     "transcript_segments": transcript_segments,
                     "language": audio_result.get("language") if "audio_result" in locals() else None,
                     "asr_model_size": audio_result.get("model_size") if "audio_result" in locals() else None,
+                    "accuracy_report": audio_result.get("accuracy_report") if "audio_result" in locals() else None,
                     "warnings": warnings,
                 },
             )
@@ -102,6 +131,52 @@ def _extract_by_file_type(path: Path, file_type: str, page_slide_number: Optiona
     if file_type == "video":
         return extract_video_intelligence(path)
     return extract_fallback(path)
+
+
+def _correct_text_sync(text: str) -> tuple[str, dict]:
+    return _run_async_blocking(correct_extracted_text(text, mongo_db))
+
+
+def _append_unique_warnings(target: list, warnings: list) -> list:
+    for warning in warnings or []:
+        if warning and warning not in target:
+            target.append(warning)
+    return target
+
+
+def _apply_ocr_corrections_to_chunks(chunks: List[SourceChunk], file_type: str) -> List[SourceChunk]:
+    if file_type not in {"image", "pdf"}:
+        return chunks
+    for chunk in chunks:
+        if not clean_text(chunk.text):
+            continue
+        original_text = chunk.text
+        corrected_text, correction_stats = _correct_text_sync(original_text)
+        chunk.text = corrected_text
+        metadata = chunk.metadata or {}
+        metadata["ocr_correction_stats"] = correction_stats
+        metadata["cleaned_text"] = corrected_text
+        metadata["corrected_text"] = corrected_text
+        if "ocr_text" in metadata and metadata.get("ocr_text"):
+            metadata["ocr_text"] = corrected_text if file_type == "image" else metadata["ocr_text"]
+        if "final_text" in metadata:
+            metadata["final_text"] = corrected_text
+            metadata["final_text_length"] = len(corrected_text)
+        if "text_length" in metadata:
+            metadata["text_length"] = len(corrected_text)
+        warnings = list(metadata.get("warnings", []) or [])
+        _append_unique_warnings(warnings, correction_stats.get("warnings", []))
+        metadata["warnings"] = warnings
+        page_level = metadata.get("page_level")
+        if isinstance(page_level, dict):
+            page_level["final_text"] = corrected_text
+            page_level["final_text_length"] = len(corrected_text)
+            page_warnings = list(page_level.get("warnings", []) or [])
+            _append_unique_warnings(page_warnings, correction_stats.get("warnings", []))
+            page_level["warnings"] = page_warnings
+            page_level["ocr_correction_stats"] = correction_stats
+        chunk.metadata = metadata
+    return chunks
 
 
 def _source_location(chunks: List[SourceChunk], file_type: str) -> str:
@@ -466,20 +541,7 @@ def _format_source_unit_text(chunk: SourceChunk) -> str:
         return clean_text(chunk.text)
     if chunk.source_type not in {"image", "page", "slide", "video"}:
         return clean_text(chunk.text)
-    parts = []
-    description = _visual_description_for_transcript(chunk.description_of_image_video)
-    readable_fragments = _readable_text_fragments(chunk.text)
-    visual_context = _visual_context_sentence(description, readable_fragments)
-    readable_text = _clean_readable_text(chunk.text)
-    if visual_context:
-        parts.append(visual_context)
-    elif description:
-        parts.append(f"The image shows {description[0].lower() + description[1:]}")
-    if readable_text:
-        parts.append(readable_text)
-    if not parts and clean_text(chunk.text):
-        parts.append(clean_text(chunk.text))
-    return clean_text(" ".join(parts))
+    return clean_text(chunk.text)
 
 
 def _full_extracted_transcript(
@@ -502,12 +564,9 @@ def _full_extracted_transcript(
             sections.append(f"Visual description:\n{clean_text(description)}")
     else:
         for chunk in chunks:
-            label = f"{chunk.source_type.title()} {chunk.source_no}" if chunk.source_no is not None else chunk.source_type.title()
             unit_text = _format_source_unit_text(chunk)
             if unit_text:
-                sections.append(f"{label}:\n{unit_text}")
-        if description and not sections:
-            sections.append(f"Visual description:\n{clean_text(description)}")
+                sections.append(unit_text)
     return clean_text("\n\n".join(section for section in sections if section))
 
 
@@ -666,6 +725,276 @@ def _estimated_extraction_accuracy(
     }
 
 
+def _save_pil_temp(image, folder: str, name: str) -> str:
+    path = Path(folder) / name
+    image.convert("RGB").save(path)
+    return str(path)
+
+
+def _cleanup_preprocessed(preprocessed_path: str, original_path: str) -> None:
+    if preprocessed_path != original_path:
+        try:
+            os.remove(preprocessed_path)
+        except Exception:
+            pass
+
+
+def _pdf_strict_accuracy(file_path: Path, file_name: str, job_id: str) -> dict:
+    warnings: list[str] = []
+    page_scores: list[dict] = []
+    method = "confidence_only_scanned_pdf"
+    model_used = "tesseract+easyocr"
+    is_measured = False
+    try:
+        import fitz
+        import pdfplumber
+        from PIL import Image
+
+        doc = fitz.open(str(file_path))
+        with tempfile.TemporaryDirectory() as folder:
+            with pdfplumber.open(str(file_path)) as pdf:
+                for page_index, fitz_page in enumerate(doc, start=1):
+                    native_text = ""
+                    if page_index - 1 < len(pdf.pages):
+                        native_text = pdf.pages[page_index - 1].extract_text() or ""
+                    pixmap = fitz_page.get_pixmap(matrix=fitz.Matrix(150 / 72.0, 150 / 72.0), alpha=False)
+                    image = Image.frombytes("RGB", [pixmap.width, pixmap.height], pixmap.samples)
+                    image_path = _save_pil_temp(image, folder, f"page_{page_index}.png")
+                    preprocessed_path = preprocess_image(image_path)
+                    if native_text and len(native_text.strip()) > 50:
+                        try:
+                            ocr_text, _ocr_confidence, ocr_engine_used = get_best_ocr_text(preprocessed_path)
+                            ocr_text, _correction_stats = _correct_text_sync(ocr_text)
+                            page_accuracy = round((1.0 - compute_cer(native_text, ocr_text)) * 100, 2)
+                            method = "pdf_self_referential_cer"
+                            model_used = f"pdfplumber+{ocr_engine_used}"
+                            is_measured = True
+                        finally:
+                            _cleanup_preprocessed(preprocessed_path, image_path)
+                    else:
+                        try:
+                            _ocr_text, ocr_confidence, ocr_engine_used = get_best_ocr_text(preprocessed_path)
+                            page_accuracy = round(ocr_confidence * 100, 2)
+                            method = "confidence_only_scanned_pdf"
+                            model_used = ocr_engine_used
+                            if is_measured:
+                                method = "mixed_pdf_self_referential_and_confidence"
+                            is_measured = False
+                        finally:
+                            _cleanup_preprocessed(preprocessed_path, image_path)
+                    page_scores.append({"page": page_index, "accuracy": page_accuracy})
+        doc.close()
+    except Exception as exc:
+        warnings.append(f"PDF accuracy computation failed: {exc}")
+
+    values = [float(page["accuracy"]) for page in page_scores]
+    accuracy = round(sum(values) / len(values), 2) if values else None
+    for page in page_scores:
+        if page["accuracy"] < 70:
+            warnings.append(f"Page {page['page']} has low extraction quality")
+    return build_report(file_name, "pdf", model_used, accuracy, is_measured, method, warnings, mongo_db, job_id)
+
+
+def _image_strict_accuracy(file_path: Path, file_name: str, job_id: str, corrected_extracted_text: str = "") -> dict:
+    reference_text = load_reference_file(job_id, str(UPLOAD_DIR))
+    warnings: list[str] = []
+    original_path = str(file_path)
+    preprocessed_path = preprocess_image(original_path)
+    if reference_text is not None:
+        try:
+            extracted_text, _ocr_confidence, ocr_engine_used = get_best_ocr_text(preprocessed_path)
+            extracted_text = corrected_extracted_text or extracted_text
+            if not corrected_extracted_text:
+                extracted_text, _correction_stats = _correct_text_sync(extracted_text)
+            accuracy = round((1.0 - compute_cer(reference_text, extracted_text)) * 100, 2)
+            is_measured = True
+            method = "cer_vs_ground_truth"
+            model_used = ocr_engine_used
+            if accuracy < 60:
+                warnings.append("Low accuracy vs ground truth - image may be blurry or skewed")
+            if accuracy < 80:
+                warnings.append("Moderate accuracy - review drug names and dosage values manually")
+        finally:
+            _cleanup_preprocessed(preprocessed_path, original_path)
+    else:
+        try:
+            _extracted_text, ocr_confidence, ocr_engine_used = get_best_ocr_text(preprocessed_path)
+            accuracy = round(ocr_confidence * 100, 2)
+            is_measured = False
+            method = "confidence_only_no_ground_truth"
+            model_used = ocr_engine_used
+            warnings = [
+                "No ground truth file uploaded. This is model confidence only, not real accuracy. Upload ground_truth.txt alongside image for measured accuracy."
+            ]
+        finally:
+            _cleanup_preprocessed(preprocessed_path, original_path)
+    return build_report(file_name, "image", model_used, accuracy, is_measured, method, warnings, mongo_db, job_id)
+
+
+def _audio_strict_accuracy(file_name: str, job_id: str, transcript: str, segments: list[dict]) -> dict:
+    reference = load_reference_transcript(job_id, str(UPLOAD_DIR))
+    warnings: list[str] = []
+    if reference:
+        wer = compute_wer(reference, transcript)
+        accuracy = round((1.0 - wer) * 100, 2)
+        is_measured = True
+        method = "wer_vs_reference_transcript"
+        model_used = "whisper"
+        if accuracy < 70:
+            warnings.append("Low transcript accuracy vs reference - audio may be noisy")
+    else:
+        accuracy = round(normalize_whisper_confidence(segments) * 100, 2)
+        is_measured = False
+        method = "whisper_confidence_only"
+        model_used = "whisper"
+        warnings = [
+            "No reference transcript uploaded. Showing Whisper confidence only, not measured accuracy. Upload reference_transcript.txt for real accuracy."
+        ]
+    return build_report(file_name, "audio", model_used, accuracy, is_measured, method, warnings, mongo_db, job_id)
+
+
+def _sample_video_frame_confidence(file_path: Path) -> float | None:
+    try:
+        import cv2
+    except Exception:
+        return None
+    scores = []
+    cap = cv2.VideoCapture(str(file_path))
+    if not cap.isOpened():
+        return None
+    try:
+        fps = cap.get(cv2.CAP_PROP_FPS) or 25
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        interval = max(int(fps * VIDEO_FRAME_SAMPLE_SECONDS), 1)
+        with tempfile.TemporaryDirectory() as folder:
+            count = 0
+            for frame_index in range(0, max(total_frames, 1), interval):
+                if count >= VIDEO_MAX_OCR_FRAMES:
+                    break
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+                ok, frame = cap.read()
+                if not ok:
+                    continue
+                image_path = str(Path(folder) / f"frame_{count + 1}.png")
+                cv2.imwrite(image_path, frame)
+                preprocessed_path = preprocess_image(image_path)
+                try:
+                    tess_conf = get_tesseract_confidence(preprocessed_path)
+                    _easy_text, easy_conf = get_easyocr_confidence(preprocessed_path)
+                    scores.append(round(((tess_conf + easy_conf) / 2.0) * 100, 2))
+                    count += 1
+                finally:
+                    _cleanup_preprocessed(preprocessed_path, image_path)
+    finally:
+        cap.release()
+    return round(sum(scores) / len(scores), 2) if scores else None
+
+
+def _video_strict_accuracy(file_path: Path, file_name: str, job_id: str, transcript: str, segments: list[dict]) -> dict:
+    reference = load_reference_transcript(job_id, str(UPLOAD_DIR))
+    warnings: list[str] = []
+    if reference:
+        audio_accuracy = round((1.0 - compute_wer(reference, transcript)) * 100, 2)
+        audio_is_measured = True
+        audio_method = "wer_vs_reference_transcript"
+    else:
+        audio_accuracy = round(normalize_whisper_confidence(segments) * 100, 2)
+        audio_is_measured = False
+        audio_method = "whisper_confidence_only"
+        warnings.append("No reference transcript - audio accuracy is confidence only")
+    frame_accuracy = _sample_video_frame_confidence(file_path)
+    frame_method = "confidence_only_no_ground_truth"
+    if frame_accuracy is not None:
+        accuracy = round((audio_accuracy * 0.5) + (frame_accuracy * 0.5), 2)
+    else:
+        accuracy = audio_accuracy
+    if frame_accuracy is not None and frame_accuracy < 50:
+        warnings.append("Low visual frame extraction quality")
+    return build_report(
+        file_name,
+        "video",
+        "whisper+tesseract+easyocr",
+        accuracy,
+        audio_is_measured,
+        f"{audio_method}+{frame_method}",
+        warnings,
+        mongo_db,
+        job_id,
+    )
+
+
+def _docx_strict_accuracy(file_path: Path, file_name: str, job_id: str) -> dict:
+    warnings: list[str] = []
+    paragraph_count = table_count = heading_count = extracted_elements = 0
+    try:
+        from docx import Document
+
+        document = Document(str(file_path))
+        paragraph_count = len(document.paragraphs)
+        table_count = len(document.tables)
+        heading_count = sum(1 for paragraph in document.paragraphs if str(paragraph.style.name).lower().startswith("heading"))
+        extracted_elements = paragraph_count + table_count + heading_count
+    except Exception as exc:
+        warnings.append(f"DOCX parse completeness failed: {exc}")
+    total_elements = paragraph_count + table_count + heading_count
+    accuracy = round((extracted_elements / total_elements) * 100, 2) if total_elements > 0 else 0.0
+    if accuracy < 90:
+        warnings.append("Some document elements failed to extract completely")
+    return build_report(file_name, "docx", "python-docx", accuracy, False, "parse_completeness", warnings, mongo_db, job_id)
+
+
+def _xlsx_strict_accuracy(file_path: Path, file_name: str, job_id: str) -> dict:
+    warnings: list[str] = []
+    total_cells = extracted_cells = 0
+    try:
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(file_path, read_only=True, data_only=True)
+        try:
+            for sheet in workbook.worksheets:
+                for row in sheet.iter_rows():
+                    for cell in row:
+                        total_cells += 1
+                        try:
+                            _value = cell.value
+                            extracted_cells += 1
+                        except Exception:
+                            pass
+        finally:
+            workbook.close()
+    except Exception as exc:
+        warnings.append(f"XLSX cell parse completeness failed: {exc}")
+    accuracy = round((extracted_cells / total_cells) * 100, 2) if total_cells > 0 else 0.0
+    if accuracy < 90:
+        warnings.append("Some cells failed to parse - file may have merged cells or formulas")
+    return build_report(file_name, "xlsx", "openpyxl", accuracy, False, "cell_parse_completeness", warnings, mongo_db, job_id)
+
+
+def _strict_accuracy_report(
+    file_path: Path,
+    original_filename: str,
+    file_type: str,
+    transcript: Optional[str],
+    transcript_segments: list[dict],
+    corrected_extracted_text: str = "",
+) -> dict:
+    job_id = file_path.stem
+    extension = file_path.suffix.lower()
+    if file_type == "image":
+        return _image_strict_accuracy(file_path, original_filename, job_id, corrected_extracted_text)
+    if file_type == "pdf":
+        return _pdf_strict_accuracy(file_path, original_filename, job_id)
+    if file_type == "audio":
+        return _audio_strict_accuracy(original_filename, job_id, transcript or "", transcript_segments)
+    if file_type == "video":
+        return _video_strict_accuracy(file_path, original_filename, job_id, transcript or "", transcript_segments)
+    if file_type == "document" and extension in {".docx", ".docm", ".dotx", ".dotm"}:
+        return _docx_strict_accuracy(file_path, original_filename, job_id)
+    if file_type == "spreadsheet" and extension == ".xlsx":
+        return _xlsx_strict_accuracy(file_path, original_filename, job_id)
+    return build_report(original_filename, file_type, _extraction_module_name(file_type), None, False, "accuracy_not_available", [], mongo_db, job_id)
+
+
 def analyze_file(
     file_path: Path,
     original_filename: str,
@@ -678,6 +1007,7 @@ def analyze_file(
     file_info = get_file_type_config(original_filename)
     file_type = detect_file_type(original_filename)
     chunks = _extract_by_file_type(file_path, file_type, page_slide_number)
+    chunks = _apply_ocr_corrections_to_chunks(chunks, file_type)
 
     description = clean_text("\n".join(c.description_of_image_video for c in chunks if c.description_of_image_video)) or None
     full_text = compact_join(
@@ -718,6 +1048,7 @@ def analyze_file(
     transcript_available = bool(full_transcript)
     if file_type in {"audio", "video"} and not full_transcript:
         full_transcript = NO_SPEECH_MESSAGE
+    accuracy_report = _strict_accuracy_report(file_path, original_filename, file_type, transcript, transcript_segments, full_transcript)
 
     fast_document_mode = file_type not in {"audio", "video"}
     content_summary = None
@@ -788,16 +1119,21 @@ def analyze_file(
 
     has_extracted_text = bool(clean_text(full_transcript))
     preview_status = "Preview Available" if (file_info.get("can_preview") or has_extracted_text) else "Unsupported Preview"
-    extraction_accuracy = _estimated_extraction_accuracy(
-        chunks,
-        file_type,
-        full_transcript,
-        transcript,
-        description,
-        frame_text,
-        frame_descriptions,
-        warnings,
-    )
+    accuracy_report_data = accuracy_report if isinstance(accuracy_report, dict) else {}
+    report_accuracy = accuracy_report_data.get("accuracy")
+    extraction_accuracy = {
+        "score": report_accuracy,
+        "percentage": report_accuracy,
+        "type": accuracy_report_data.get("method", "accuracy_not_available"),
+        "module": accuracy_report_data.get("model_used") or _extraction_module_name(file_type),
+        "can_average": report_accuracy is not None,
+        "accuracy_source": "ground_truth" if accuracy_report_data.get("is_measured_accuracy") else "confidence_only",
+        "measured_accuracy": report_accuracy if accuracy_report_data.get("is_measured_accuracy") else None,
+        "estimated_quality_score": report_accuracy,
+        "confidence_score": report_accuracy if not accuracy_report_data.get("is_measured_accuracy") else None,
+        "note": accuracy_report_data.get("method", "accuracy_not_available"),
+        "unit_scores": [],
+    }
     page_level_output = [chunk.metadata.get("page_level") for chunk in chunks if chunk.metadata.get("page_level")]
     slide_level_output = [chunk.metadata.get("slide_level") for chunk in chunks if chunk.metadata.get("slide_level")]
     frame_level_output = []
@@ -807,10 +1143,11 @@ def analyze_file(
     for chunk in chunks:
         method = chunk.metadata.get("extraction_method") or "unknown"
         extraction_method_summary[method] = extraction_method_summary.get(method, 0) + 1
-    is_pdf_estimated_quality = file_type == "pdf" and extraction_accuracy.get("accuracy_source") == "estimated_quality"
     measured_accuracy = extraction_accuracy.get("measured_accuracy")
     estimated_quality_score = extraction_accuracy.get("estimated_quality_score", extraction_accuracy["score"])
     confidence_score = extraction_accuracy.get("confidence_score")
+    accuracy_available = measured_accuracy is not None
+    accuracy_source = "ground_truth" if accuracy_available else "confidence_only"
 
     return BaseIntelligenceResponse(
         file_name=original_filename,
@@ -838,16 +1175,17 @@ def analyze_file(
             "preview_type": file_info.get("preview_type"),
             "preview_status": preview_status,
             "extraction_status": "Text Extracted" if has_extracted_text else "No readable text extracted",
-            "accuracy_score": measured_accuracy if is_pdf_estimated_quality else extraction_accuracy["score"],
-            "accuracy_percentage": measured_accuracy if is_pdf_estimated_quality else extraction_accuracy["percentage"],
-            "accuracy_type": "measured_accuracy" if measured_accuracy is not None else (None if is_pdf_estimated_quality else extraction_accuracy["type"]),
+            "accuracy_score": extraction_accuracy["score"],
+            "accuracy_percentage": extraction_accuracy["percentage"],
+            "accuracy_type": "measured_accuracy" if measured_accuracy is not None else extraction_accuracy["type"],
             "accuracy_module": extraction_accuracy["module"],
             "extraction_accuracy": extraction_accuracy,
+            "accuracy_report": accuracy_report,
             "measured_accuracy": measured_accuracy,
             "estimated_quality_score": estimated_quality_score,
             "estimated_extraction_quality": estimated_quality_score,
             "confidence_score": confidence_score,
-            "accuracy_source": "ground_truth" if measured_accuracy is not None else "estimated_quality",
+            "accuracy_source": accuracy_source,
             "mapping_status": mapping_status,
             "supported_file_type": file_info,
             "transcript_segments": transcript_segments,
@@ -858,10 +1196,11 @@ def analyze_file(
             "frame_level_output": frame_level_output,
             "quality_score": estimated_quality_score,
             "quality_note": extraction_accuracy["note"],
-            "accuracy_available": measured_accuracy is not None,
-            "accuracy_note": "Measured Accuracy is available from ground truth." if measured_accuracy is not None else "Real accuracy cannot be calculated without ground truth. Showing Estimated Extraction Quality.",
+            "accuracy_available": accuracy_available,
+            "accuracy_note": "Measured accuracy is available from ground truth." if accuracy_available else "Ground truth was not available. Showing confidence only where supported.",
             "extraction_method_summary": extraction_method_summary,
             "content_metadata": content_metadata,
             "workflow": "upload -> detect file type -> processor -> shared intelligence -> translation -> analytics -> key-message mapping -> base model response",
         },
+        accuracy_report=accuracy_report,
     )

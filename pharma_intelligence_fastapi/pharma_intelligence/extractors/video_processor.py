@@ -3,6 +3,8 @@ import shutil
 import subprocess
 import base64
 import json
+import os
+import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -23,6 +25,7 @@ from ..config import (
     VISION_ACTIVITY_MODEL,
 )
 from ..models import SourceChunk
+from ..preprocessing import preprocess_image
 from ..utils import clean_text
 from .audio_processor import transcribe_audio_result
 from .ocr_utils import run_ocr_on_image
@@ -437,8 +440,19 @@ def extract_text_from_frame_result(frame):
         from PIL import Image
     except Exception as exc:
         raise RuntimeError("opencv-python and Pillow are required for video frame OCR.") from exc
-    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    return run_ocr_on_image(Image.fromarray(rgb), fast=True)
+    with tempfile.TemporaryDirectory() as folder:
+        frame_path = Path(folder) / "frame.png"
+        cv2.imwrite(str(frame_path), frame)
+        preprocessed_path = preprocess_image(str(frame_path))
+        try:
+            rgb_image = Image.open(preprocessed_path).convert("RGB")
+            return run_ocr_on_image(rgb_image, fast=True)
+        finally:
+            if preprocessed_path != str(frame_path):
+                try:
+                    os.remove(preprocessed_path)
+                except Exception:
+                    pass
 
 
 def _frame_difference_score(frame, previous_frame) -> float:

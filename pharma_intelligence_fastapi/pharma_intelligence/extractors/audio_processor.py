@@ -23,6 +23,7 @@ from ..config import (
     ASR_TEMPERATURE,
     BASE_DIR,
 )
+from ..transcription.whisper_context import get_pharma_prompt
 from ..utils import clean_text
 
 logger = logging.getLogger(__name__)
@@ -175,14 +176,13 @@ def _build_initial_prompt(audio_path: Path, extra_context: str = "") -> str | No
 
 
 def _transcribe_options(audio_path: Path, context: str = "", *, use_prompt: bool = True, condition_on_previous_text: bool | None = None) -> dict[str, Any]:
-    prompt = _build_initial_prompt(audio_path, extra_context=context) if use_prompt else None
     return {
-        "language": ASR_LANGUAGE,
+        "language": "en",
         "beam_size": ASR_BEAM_SIZE,
         "best_of": ASR_BEST_OF,
         "temperature": ASR_TEMPERATURE,
         "condition_on_previous_text": ASR_CONDITION_ON_PREVIOUS_TEXT if condition_on_previous_text is None else condition_on_previous_text,
-        "initial_prompt": prompt,
+        "initial_prompt": get_pharma_prompt(),
         "no_speech_threshold": ASR_NO_SPEECH_THRESHOLD,
         "logprob_threshold": ASR_LOGPROB_THRESHOLD,
         "compression_ratio_threshold": ASR_COMPRESSION_RATIO_THRESHOLD,
@@ -220,13 +220,16 @@ def transcribe_audio_file(
     except Exception as exc:
         raise RuntimeError("openai-whisper is required for audio transcription. Install with: pip install openai-whisper") from exc
 
+    if str(model_size).lower().startswith(("medium", "large")):
+        model_size = "small"
     try:
         model = whisper.load_model(model_size)
     except Exception as exc:
-        if not ASR_FALLBACK_MODEL_NAME or ASR_FALLBACK_MODEL_NAME == model_size:
+        fallback_model_size = "small" if str(ASR_FALLBACK_MODEL_NAME).lower().startswith(("medium", "large")) else ASR_FALLBACK_MODEL_NAME
+        if not fallback_model_size or fallback_model_size == model_size:
             raise
-        logger.warning("Could not load ASR model %s. Falling back to %s: %s", model_size, ASR_FALLBACK_MODEL_NAME, exc)
-        model = whisper.load_model(ASR_FALLBACK_MODEL_NAME)
+        logger.warning("Could not load ASR model %s. Falling back to %s: %s", model_size, fallback_model_size, exc)
+        model = whisper.load_model(fallback_model_size)
     warnings: list[str] = []
     normalized_audio_path = normalize_audio_for_asr(audio_path, warnings)
     result = _run_transcribe(model, normalized_audio_path, context=context)
@@ -295,13 +298,16 @@ def transcribe_audio_result(
     except Exception as exc:
         raise RuntimeError("openai-whisper is required for audio transcription. Install with: pip install openai-whisper") from exc
 
+    if str(model_size).lower().startswith(("medium", "large")):
+        model_size = "small"
     try:
         model = whisper.load_model(model_size)
     except Exception as exc:
-        if not ASR_FALLBACK_MODEL_NAME or ASR_FALLBACK_MODEL_NAME == model_size:
+        fallback_model_size = "small" if str(ASR_FALLBACK_MODEL_NAME).lower().startswith(("medium", "large")) else ASR_FALLBACK_MODEL_NAME
+        if not fallback_model_size or fallback_model_size == model_size:
             raise
-        logger.warning("Could not load ASR model %s. Falling back to %s: %s", model_size, ASR_FALLBACK_MODEL_NAME, exc)
-        model = whisper.load_model(ASR_FALLBACK_MODEL_NAME)
+        logger.warning("Could not load ASR model %s. Falling back to %s: %s", model_size, fallback_model_size, exc)
+        model = whisper.load_model(fallback_model_size)
 
     normalized_audio_path = normalize_audio_for_asr(audio_path, warnings)
     result = _run_transcribe(model, normalized_audio_path, context=context)

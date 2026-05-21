@@ -66,6 +66,12 @@ EMBEDDING_MODEL_ENABLED = os.getenv("EMBEDDING_MODEL_ENABLED", "false").lower() 
 KEYWORD_MODEL_ENABLED = os.getenv("KEYWORD_MODEL_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
 IMAGE_OCR_MODE = os.getenv("IMAGE_OCR_MODE", "fast").lower()
 IMAGE_EASYOCR_ENABLED = os.getenv("IMAGE_EASYOCR_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+CORRECTION_THRESHOLD = int(os.getenv("CORRECTION_THRESHOLD", 85))
+MIN_WORD_LENGTH = int(os.getenv("MIN_WORD_LENGTH_FOR_CORRECTION", 4))
+CORRECTION_ENABLED = os.getenv("CORRECTION_ENABLED", "true").lower() == "true"
+FDA_API_URL = os.getenv("FDA_API_URL", "https://api.fda.gov/drug/label.json")
+GOOGLE_VISION_API_KEY = os.getenv("GOOGLE_VISION_API_KEY", "")
+GOOGLE_VISION_ENABLED = os.getenv("GOOGLE_VISION_API_KEY") is not None
 
 SUPPORTED_FILE_TYPES = {
     ".pdf": {"file_type": "pdf", "category": "Documents", "can_preview": True, "can_full_text_search": True, "extractor_name": "pdf", "preview_type": "pdf"},

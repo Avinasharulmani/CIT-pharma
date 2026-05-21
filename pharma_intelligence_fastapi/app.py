@@ -30,7 +30,9 @@ from pharma_intelligence.config import (
     SUPPORTED_FILE_TYPES,
     UPLOAD_DIR,
 )
-from pharma_intelligence.mongo_database import init_mongo, review_annotations_collection
+from pharma_intelligence.correction.dictionary_loader import fetch_fda_drug_names
+from pharma_intelligence.correction.ocr_error_map import seed_default_patterns
+from pharma_intelligence.mongo_database import db as mongo_db, init_mongo, review_annotations_collection
 from pharma_intelligence.models import BaseIntelligenceResponse
 from pharma_intelligence.persistence import save_accuracy_report, save_analysis_response
 from pharma_intelligence.permissions import (
@@ -47,6 +49,7 @@ from pharma_intelligence.permissions import (
     role_options,
 )
 from pharma_intelligence.react_ui import REACT_INDEX_HTML
+from pharma_intelligence.routes.dictionary import router as dictionary_router
 from pharma_intelligence.services import analyze_file
 from pharma_intelligence.services.mlr_review_service import run_mlr_review
 from pharma_intelligence.extractors.ppt_processor import extract_ppt
@@ -66,6 +69,7 @@ app = FastAPI(
     version="1.0.0",
     description="Reusable FastAPI UI and API for extracting text-based intelligence from pharma commercial materials.",
 )
+app.include_router(dictionary_router)
 
 UPLOADED_MATERIALS: dict[str, tuple[Path, str]] = {}
 UPLOADED_FILE_HASHES: dict[str, str] = {}
@@ -107,8 +111,11 @@ TEXT_PREVIEW_EXTENSIONS = {
 
 
 @app.on_event("startup")
-def startup_event():
+async def startup_event():
     init_mongo()
+    await seed_default_patterns(mongo_db)
+    if mongo_db["pharma_drug_names"].count_documents({"active": True}) == 0:
+        await fetch_fda_drug_names(mongo_db)
 
 
 @app.get("/health")
@@ -125,7 +132,7 @@ def _get_uploaded_material(upload_id: str) -> tuple[Path, str]:
     uploaded = UPLOADED_MATERIALS.get(upload_id)
     if not uploaded:
         UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-        matches = sorted(UPLOAD_DIR.glob(f"{upload_id}*"), key=lambda item: item.stat().st_mtime, reverse=True)
+        matches = sorted((item for item in UPLOAD_DIR.glob(f"{upload_id}*") if item.is_file()), key=lambda item: item.stat().st_mtime, reverse=True)
         if matches:
             recovered_path = matches[0]
             recovered_name = _display_upload_name(recovered_path)
@@ -721,7 +728,7 @@ def _preview_metadata(upload_id: str, source_path: Path, original_filename: str)
                 "preview_available": bool(text),
                 "converted": False,
                 "text_preview": text,
-                "units": units[:20],
+                "units": units,
                 "warnings": warnings,
                 "message": "Text preview generated from extracted content." if text else "Preview conversion is unavailable and no readable preview text was found.",
                 "analysis_status": "Ready for analysis",
@@ -732,6 +739,7 @@ def _preview_metadata(upload_id: str, source_path: Path, original_filename: str)
         }
     if extension in TEXT_PREVIEW_EXTENSIONS or file_info.get("preview_type") in {"text", "code", "table", "email", "package", "html"}:
         text, units, warnings = _extract_preview_text(source_path, original_filename)
+        unit_limit = None if file_info.get("preview_type") in {"text", "code", "html"} or extension in TEXT_PREVIEW_EXTENSIONS else 20
         return {
             "asset_id": upload_id,
             "file_name": original_filename,
@@ -744,7 +752,7 @@ def _preview_metadata(upload_id: str, source_path: Path, original_filename: str)
             "preview_available": bool(text or units),
             "converted": False,
             "text_preview": text,
-            "units": units[:20],
+            "units": units if unit_limit is None else units[:unit_limit],
             "warnings": warnings,
             "message": "Preview generated from extracted content." if text or units else "No readable preview content was found.",
             "analysis_status": "Ready for analysis",
@@ -765,7 +773,7 @@ def _preview_metadata(upload_id: str, source_path: Path, original_filename: str)
                 "preview_available": True,
                 "converted": False,
                 "text_preview": text,
-                "units": units[:20],
+                "units": units,
                 "warnings": warnings,
                 "message": "Direct visual preview is not available, but readable text was extracted for preview.",
                 "analysis_status": "Ready for analysis",
@@ -1344,10 +1352,14 @@ async def _run_analysis(
     mapping_enabled: bool,
     page_slide_number: Optional[int],
     top_k: Optional[int],
+    ground_truth: Optional[UploadFile] = None,
+    reference_transcript: Optional[UploadFile] = None,
 ) -> BaseIntelligenceResponse:
     uploaded_path = await save_upload_file(file, UPLOAD_DIR)
     upload_id = uploaded_path.stem
     original_filename = file.filename or uploaded_path.name
+    await _save_optional_reference_file(upload_id, ground_truth, "ground_truth", {".txt"})
+    await _save_optional_reference_file(upload_id, reference_transcript, "reference_transcript", {".txt", ".srt"})
     UPLOADED_MATERIALS[upload_id] = (uploaded_path, original_filename)
     UPLOADED_FILE_HASHES[upload_id] = _file_hash(uploaded_path)
     UPLOAD_IDS_BY_HASH.setdefault(UPLOADED_FILE_HASHES[upload_id], upload_id)
@@ -1382,9 +1394,16 @@ async def _run_analysis_from_path(
     analysis_path = uploaded_path
     file_hash = _upload_hash(uploaded_path.stem, uploaded_path)
     key_hash = _file_hash(key_message_path) if key_message_path and key_message_path.exists() else ""
+    reference_dir = UPLOAD_DIR / uploaded_path.stem
+    reference_hash = ""
+    for reference_name in ("ground_truth.txt", "reference_transcript.txt", "reference_transcript.srt"):
+        reference_path = reference_dir / reference_name
+        if reference_path.exists():
+            reference_hash += f"{reference_name}:{_file_hash(reference_path)};"
     analysis_cache_key = (
         file_hash,
         key_hash,
+        reference_hash,
         target_language or DEFAULT_TARGET_LANGUAGE,
         bool(mapping_enabled),
         page_slide_number,
@@ -1421,11 +1440,17 @@ async def _run_analysis_from_path(
 
 
 @app.post("/api/upload-material")
-async def upload_material_api(file: UploadFile = File(...)):
+async def upload_material_api(
+    file: UploadFile = File(...),
+    ground_truth: Optional[UploadFile] = File(None),
+    reference_transcript: Optional[UploadFile] = File(None),
+):
     try:
         uploaded_path = await save_upload_file(file, UPLOAD_DIR)
         upload_id = uploaded_path.stem
         original_filename = _display_upload_name(uploaded_path)
+        await _save_optional_reference_file(upload_id, ground_truth, "ground_truth", {".txt"})
+        await _save_optional_reference_file(upload_id, reference_transcript, "reference_transcript", {".txt", ".srt"})
         file_hash = _file_hash(uploaded_path)
         UPLOADED_MATERIALS[upload_id] = (uploaded_path, original_filename)
         UPLOADED_FILE_HASHES[upload_id] = file_hash
@@ -1466,6 +1491,24 @@ def file_types_api():
 def _display_upload_name(path: Path) -> str:
     parts = path.name.split("_", 1)
     return parts[1] if len(parts) == 2 and len(parts[0]) >= 16 else path.name
+
+
+async def _save_optional_reference_file(upload_id: str, upload_file: Optional[UploadFile], target_name: str, allowed_extensions: set[str]) -> None:
+    if not upload_file or not upload_file.filename:
+        return
+    extension = Path(upload_file.filename).suffix.lower()
+    if extension not in allowed_extensions:
+        allowed = ", ".join(sorted(allowed_extensions))
+        raise HTTPException(status_code=400, detail=f"{target_name} must be one of: {allowed}")
+    target_dir = UPLOAD_DIR / upload_id
+    target_dir.mkdir(parents=True, exist_ok=True)
+    destination = target_dir / f"{target_name}{extension}"
+    with destination.open("wb") as output:
+        while True:
+            chunk = await upload_file.read(1024 * 1024)
+            if not chunk:
+                break
+            output.write(chunk)
 
 
 @app.get("/api/uploaded-materials")
@@ -1525,7 +1568,8 @@ def material_preview_units_api(upload_id: str, start: int = 1, count: int = 1, q
     file_type = detect_file_type(original_filename)
     file_hash = _upload_hash(upload_id, uploaded_path)
     safe_start = max(1, int(start or 1))
-    safe_count = max(1, min(int(count or 1), 20))
+    max_preview_units = 500 if file_type in {"text", "script"} else 20
+    safe_count = max(1, min(int(count or 1), max_preview_units))
     safe_quality = "full" if str(quality).lower() == "full" else "thumb"
     cache_key = (file_hash, file_type, safe_start, safe_count, safe_quality)
     cached = PREVIEW_UNITS_CACHE.get(cache_key)
@@ -1836,6 +1880,8 @@ async def analyze_api(
     file: Optional[UploadFile] = File(None),
     upload_id: Optional[str] = Form(None),
     key_message_file: Optional[UploadFile] = File(None),
+    ground_truth: Optional[UploadFile] = File(None),
+    reference_transcript: Optional[UploadFile] = File(None),
     target_language: str = Form(DEFAULT_TARGET_LANGUAGE),
     mapping_enabled: bool = Form(True),
     page_slide_number: Optional[int] = Form(None),
@@ -1860,7 +1906,7 @@ async def analyze_api(
             )
         if not file:
             raise HTTPException(status_code=400, detail="Choose a material file before analysis.")
-        return await _run_analysis(file, key_message_file, target_language, mapping_enabled, page_slide_number, top_k)
+        return await _run_analysis(file, key_message_file, target_language, mapping_enabled, page_slide_number, top_k, ground_truth, reference_transcript)
     except HTTPException:
         raise
     except Exception as exc:

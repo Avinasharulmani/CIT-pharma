@@ -1,11 +1,14 @@
 from pathlib import Path
 from typing import List, Optional
 import io
+import os
+import tempfile
 
 from ..models import SourceChunk
+from ..preprocessing import preprocess_image
 from ..utils import clean_text
 from .image_processor import describe_pil_image_content
-from .ocr_utils import run_ocr_on_image
+from .ocr_utils import run_ocr_on_image_path
 from .pdf_quality import calculate_pdf_quality_score
 from .text_quality import extraction_unit_metadata, is_weak_text, merge_text_blocks
 
@@ -64,11 +67,12 @@ def _extract_page_text_pypdf2(path: Path, page_index: int, warnings: list[str]) 
         return ""
 
 
-def _render_page_to_image(page):
+def _render_page_to_image(page, dpi: int = 144):
     from PIL import Image
     import fitz
 
-    pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+    scale = dpi / 72.0
+    pixmap = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
     return Image.frombytes("RGB", [pixmap.width, pixmap.height], pixmap.samples)
 
 
@@ -92,11 +96,23 @@ def extract_pdf(path: Path, page_number: Optional[int] = None) -> List[SourceChu
             ocr_text = ""
             ocr_result = None
             extraction_method = "native"
+            page_image = _render_page_to_image(page, dpi=150)
             if is_weak_text(native_text, min_chars=PDF_WEAK_TEXT_CHARS):
                 warnings.append("empty native text" if not native_text else "weak native text")
                 warnings.append("scanned page detected")
                 try:
-                    ocr_result = run_ocr_on_image(_render_page_to_image(page))
+                    with tempfile.TemporaryDirectory() as folder:
+                        rasterized_page_path = Path(folder) / f"page_{index}.png"
+                        page_image.save(rasterized_page_path)
+                        preprocessed_path = preprocess_image(str(rasterized_page_path))
+                        try:
+                            ocr_result = run_ocr_on_image_path(preprocessed_path)
+                        finally:
+                            if preprocessed_path != str(rasterized_page_path):
+                                try:
+                                    os.remove(preprocessed_path)
+                                except Exception:
+                                    pass
                     ocr_text = ocr_result.text
                     if ocr_result.warnings:
                         warnings.extend(ocr_result.warnings)
@@ -127,7 +143,7 @@ def extract_pdf(path: Path, page_number: Optional[int] = None) -> List[SourceChu
                 "final_text_length": len(text),
                 "quality_score": quality["quality_score"],
                 "measured_accuracy": None,
-                "accuracy_source": "estimated_quality",
+                "accuracy_source": "strict_report_builder",
                 "confidence_score": getattr(ocr_result, "confidence_score", None),
                 "estimated_confidence_score": quality["confidence_score"],
                 "noise_ratio": quality["noise_ratio"],
@@ -155,7 +171,7 @@ def extract_pdf(path: Path, page_number: Optional[int] = None) -> List[SourceChu
                         "quality_score": quality["quality_score"],
                         "estimated_quality_score": quality["quality_score"],
                         "measured_accuracy": None,
-                        "accuracy_source": "estimated_quality",
+                        "accuracy_source": "strict_report_builder",
                         "confidence_score": quality["confidence_score"],
                         "native_text_length": len(native_text),
                         "ocr_text_length": len(ocr_text),
