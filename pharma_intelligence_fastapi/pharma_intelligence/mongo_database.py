@@ -10,6 +10,8 @@ key_messages_collection = db["key_messages"]
 analysis_results_collection = db["analysis_results"]
 review_annotations_collection = db["review_annotations"]
 model_accuracy_history_collection = db["model_accuracy_history"]
+mlr_checklist_items_collection = db["mlr_checklist_items"]
+mlr_review_results_collection = db["mlr_review_results"]
 pharma_drug_names_collection = db["pharma_drug_names"]
 pharma_terms_collection = db["pharma_terms"]
 pharma_dosage_units_collection = db["pharma_dosage_units"]
@@ -36,6 +38,10 @@ def init_mongo() -> None:
     review_annotations_collection.create_index([("asset_id", 1), ("content_version_id", 1), ("created_at", -1)])
     review_annotations_collection.create_index([("file_hash", 1), ("created_at", -1)])
     review_annotations_collection.create_index("status")
+    mlr_checklist_items_collection.create_index([("checklist_version", 1), ("item_code", 1)], unique=True)
+    mlr_checklist_items_collection.create_index([("checklist_version", 1), ("section_name", 1)])
+    mlr_review_results_collection.create_index([("upload_id", 1), ("created_at", -1)])
+    mlr_review_results_collection.create_index("created_at")
     model_accuracy_history_collection.create_index("model_name")
     model_accuracy_history_collection.create_index([("model_name", 1), ("is_measured", 1)])
     for collection in (pharma_drug_names_collection, pharma_terms_collection, pharma_dosage_units_collection):

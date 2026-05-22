@@ -30,9 +30,25 @@ REPORTS_DIR = BASE_DIR / "reports"
 DEFAULT_KEY_MESSAGE_PATH = BASE_DIR / "Key_Messages_Final_NEW_all_media_rows.xlsx"
 SAMPLE_KEY_MESSAGE_PATH = BASE_DIR / "sample_key_messages.csv"
 MLR_GUIDELINES_DIR = Path(os.getenv("MLR_GUIDELINES_DIR", "")).expanduser() if os.getenv("MLR_GUIDELINES_DIR") else None
+MLR_GUIDELINE_PATH = Path(os.getenv("MLR_GUIDELINE_PATH", "")).expanduser() if os.getenv("MLR_GUIDELINE_PATH") else None
 MLR_MARKETING_GUIDELINE_PATH = Path(os.getenv("MLR_MARKETING_GUIDELINE_PATH", "")).expanduser() if os.getenv("MLR_MARKETING_GUIDELINE_PATH") else None
 MLR_LEGAL_GUIDELINE_PATH = Path(os.getenv("MLR_LEGAL_GUIDELINE_PATH", "")).expanduser() if os.getenv("MLR_LEGAL_GUIDELINE_PATH") else None
 MLR_REGULATORY_GUIDELINE_PATH = Path(os.getenv("MLR_REGULATORY_GUIDELINE_PATH", "")).expanduser() if os.getenv("MLR_REGULATORY_GUIDELINE_PATH") else None
+MLR_EMBEDDING_MODEL_NAME = os.getenv("MLR_EMBEDDING_MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2")
+MLR_EMBEDDING_LOCAL_FILES_ONLY = os.getenv("MLR_EMBEDDING_LOCAL_FILES_ONLY", os.getenv("EMBEDDING_LOCAL_FILES_ONLY", "false")).lower() in {"1", "true", "yes", "on"}
+MLR_REVIEW_SIMILARITY_THRESHOLD = float(os.getenv("MLR_REVIEW_SIMILARITY_THRESHOLD", "0.55"))
+MLR_REVIEW_NEEDS_REVIEW_THRESHOLD = float(os.getenv("MLR_REVIEW_NEEDS_REVIEW_THRESHOLD", "0.35"))
+MLR_EVIDENCE_TERM_MATCH_RATIO = float(os.getenv("MLR_EVIDENCE_TERM_MATCH_RATIO", "0.45"))
+MLR_EVIDENCE_MIN_MATCHED_TERMS = int(os.getenv("MLR_EVIDENCE_MIN_MATCHED_TERMS", "2"))
+MLR_TOP_MATCHES = int(os.getenv("MLR_TOP_MATCHES", "3"))
+MLR_REVIEW_SECTIONS = [
+    item.strip()
+    for item in os.getenv("MLR_REVIEW_SECTIONS", "Medical Review,Legal Review,Regulatory Review").split(",")
+    if item.strip()
+]
+MLR_AI_JUDGMENT_ENABLED = os.getenv("MLR_AI_JUDGMENT_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-2.5-flash")
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
 MONGODB_DB = os.getenv("MONGODB_DB", "pharma_intelligence")
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://postgres:root@localhost:5432/Keymessages")
@@ -70,8 +86,12 @@ CORRECTION_THRESHOLD = int(os.getenv("CORRECTION_THRESHOLD", 85))
 MIN_WORD_LENGTH = int(os.getenv("MIN_WORD_LENGTH_FOR_CORRECTION", 4))
 CORRECTION_ENABLED = os.getenv("CORRECTION_ENABLED", "true").lower() == "true"
 FDA_API_URL = os.getenv("FDA_API_URL", "https://api.fda.gov/drug/label.json")
-GOOGLE_VISION_API_KEY = os.getenv("GOOGLE_VISION_API_KEY", "")
-GOOGLE_VISION_ENABLED = os.getenv("GOOGLE_VISION_API_KEY") is not None
+OPEN_WEIGHT_VLM_API_KEY = os.getenv("OPEN_WEIGHT_VLM_API_KEY", "")
+OPEN_WEIGHT_VLM_API_URL = os.getenv("OPEN_WEIGHT_VLM_API_URL", "http://localhost:8001/v1/chat/completions")
+OPEN_WEIGHT_VLM_MODEL = os.getenv("OPEN_WEIGHT_VLM_MODEL", "nvidia/nemotron-nano-12b-v2-vl")
+OPEN_WEIGHT_VLM_ENABLED = os.getenv("OPEN_WEIGHT_VLM_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+OPEN_WEIGHT_VLM_TIMEOUT_SECONDS = float(os.getenv("OPEN_WEIGHT_VLM_TIMEOUT_SECONDS", "60"))
+OPEN_WEIGHT_VLM_CONFIDENCE = float(os.getenv("OPEN_WEIGHT_VLM_CONFIDENCE", "0.85"))
 
 SUPPORTED_FILE_TYPES = {
     ".pdf": {"file_type": "pdf", "category": "Documents", "can_preview": True, "can_full_text_search": True, "extractor_name": "pdf", "preview_type": "pdf"},

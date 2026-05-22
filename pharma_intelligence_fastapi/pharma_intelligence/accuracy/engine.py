@@ -6,7 +6,7 @@ from pathlib import Path
 from statistics import mean
 from typing import Optional
 
-from ..ocr.google_vision_ocr import extract_text_google_vision, is_vision_available
+from ..ocr.open_weight_vlm_ocr import extract_text_open_weight_vlm, is_open_weight_vlm_available
 
 
 def _clamp(value: float) -> float:
@@ -105,10 +105,10 @@ def get_tesseract_text(image_path: str) -> str:
 
 
 def get_best_ocr_text(image_path: str) -> tuple[str, float, str]:
-    if is_vision_available():
-        text, confidence = extract_text_google_vision(image_path)
+    if is_open_weight_vlm_available():
+        text, confidence = extract_text_open_weight_vlm(image_path)
         if text.strip() and confidence > 0:
-            return text, confidence, "google_vision"
+            return text, confidence, "open_weight_vlm"
     text = get_tesseract_text(image_path)
     confidence = get_tesseract_confidence(image_path)
     return text, confidence, "tesseract_fallback"

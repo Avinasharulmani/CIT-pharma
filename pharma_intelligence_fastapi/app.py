@@ -50,8 +50,10 @@ from pharma_intelligence.permissions import (
 )
 from pharma_intelligence.react_ui import REACT_INDEX_HTML
 from pharma_intelligence.routes.dictionary import router as dictionary_router
+from pharma_intelligence.routes.mlr_routes import router as mlr_router
 from pharma_intelligence.services import analyze_file
 from pharma_intelligence.services.mlr_review_service import run_mlr_review
+from pharma_intelligence.services.mlr_review_engine import run_mlr_review_for_analysis
 from pharma_intelligence.extractors.ppt_processor import extract_ppt
 from pharma_intelligence.extractors.image_processor import _document_image_segments
 from pharma_intelligence.utils import clean_text, detect_file_type, get_file_type_config, save_upload_file
@@ -70,6 +72,7 @@ app = FastAPI(
     description="Reusable FastAPI UI and API for extracting text-based intelligence from pharma commercial materials.",
 )
 app.include_router(dictionary_router)
+app.include_router(mlr_router)
 
 UPLOADED_MATERIALS: dict[str, tuple[Path, str]] = {}
 UPLOADED_FILE_HASHES: dict[str, str] = {}
@@ -1401,6 +1404,7 @@ async def _run_analysis_from_path(
         if reference_path.exists():
             reference_hash += f"{reference_name}:{_file_hash(reference_path)};"
     analysis_cache_key = (
+        "ocr_easyocr_path_v2",
         file_hash,
         key_hash,
         reference_hash,
@@ -1430,8 +1434,18 @@ async def _run_analysis_from_path(
         page_slide_number=page_slide_number,
         top_k=DEFAULT_TOP_K if top_k is None else top_k,
     )
+    response.metadata["upload_id"] = uploaded_path.stem
+    response.metadata["original_filename"] = original_filename
     analysis_result_id = save_analysis_response(response)
     response.metadata["analysis_result_id"] = analysis_result_id
+    try:
+        response.metadata["mlr_review"] = run_mlr_review_for_analysis(
+            uploaded_path.stem,
+            original_filename,
+            _response_payload(response),
+        )
+    except Exception as exc:
+        response.metadata["mlr_review_error"] = str(exc)
     response.metadata["cached"] = False
     accuracy_report_path = save_accuracy_report(response, analysis_result_id=analysis_result_id)
     response.metadata["accuracy_report_path"] = str(accuracy_report_path)
@@ -1796,6 +1810,10 @@ def get_analysis_job(job_id: str):
 @app.post("/api/mlr-review")
 def mlr_review_api(payload: dict[str, Any] = Body(...)):
     try:
+        result = payload.get("result") if isinstance(payload.get("result"), dict) else payload
+        upload_id = str(payload.get("upload_id") or (result.get("metadata") or {}).get("upload_id") or "").strip()
+        if upload_id:
+            return run_mlr_review_for_analysis(upload_id, str(result.get("file_name") or upload_id), result)
         return run_mlr_review(payload)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

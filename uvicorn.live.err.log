@@ -1,0 +1,31 @@
+INFO:     Started server process [27616]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+Loading weights:   0%|          | 0/473 [00:00<?, ?it/s]Loading weights: 100%|##########| 473/473 [00:00<00:00, 18206.65it/s]
+[1mBlipForConditionalGeneration LOAD REPORT[0m from: Salesforce/blip-image-captioning-base
+Key                                       | Status     |  | 
+------------------------------------------+------------+--+-
+text_decoder.bert.embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+Loading weights:   0%|          | 0/788 [00:00<?, ?it/s]Loading weights:  40%|###9      | 315/788 [00:00<00:00, 3147.99it/s]Loading weights: 100%|##########| 788/788 [00:00<00:00, 5076.52it/s]
+[1mBlipForQuestionAnswering LOAD REPORT[0m from: Salesforce/blip-vqa-base
+Key                                       | Status     |  | 
+------------------------------------------+------------+--+-
+text_encoder.embeddings.position_ids      | UNEXPECTED |  | 
+text_decoder.bert.embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|##########| 103/103 [00:00<00:00, 4006.24it/s]
+[1mBertModel LOAD REPORT[0m from: sentence-transformers/all-MiniLM-L6-v2
+Key                     | Status     |  | 
+------------------------+------------+--+-
+embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+  0%|          | 0/11814 [00:00<?, ?frames/s] 25%|##4       | 2916/11814 [00:03<00:09, 927.53frames/s] 49%|####8     | 5780/11814 [00:06<00:06, 914.16frames/s] 72%|#######1  | 8480/11814 [00:09<00:03, 893.73frames/s] 95%|#########5| 11230/11814 [00:12<00:00, 947.45frames/s]100%|##########| 11814/11814 [00:12<00:00, 967.38frames/s]100%|##########| 11814/11814 [00:12<00:00, 941.89frames/s]

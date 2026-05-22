@@ -10,7 +10,7 @@ from typing import Any, Iterable
 
 from ..config import IMAGE_EASYOCR_ENABLED
 from ..accuracy.engine import get_best_ocr_text
-from ..ocr.google_vision_ocr import is_vision_available
+from ..ocr.open_weight_vlm_ocr import is_open_weight_vlm_available
 from ..utils import clean_text
 from .text_quality import merge_text_blocks, text_quality_score
 
@@ -42,7 +42,7 @@ class OCRResult:
 
 
 def ocr_available() -> bool:
-    return bool(is_vision_available() or shutil.which("tesseract") or (IMAGE_EASYOCR_ENABLED and importlib.util.find_spec("easyocr")))
+    return bool(is_open_weight_vlm_available() or shutil.which("tesseract") or (IMAGE_EASYOCR_ENABLED and importlib.util.find_spec("easyocr")))
 
 
 def preprocess_image_variants(image) -> list[tuple[str, Any]]:
@@ -205,13 +205,39 @@ def _ocr_easyocr_image(image) -> OCRResult:
 
 def run_ocr_on_image_path(image_path: str) -> OCRResult:
     text, confidence, engine = get_best_ocr_text(image_path)
-    selected_variant = "document_text_detection" if engine == "google_vision" else "image_to_string"
-    return _scored_result(
-        text=text,
-        engine=engine,
-        selected_variant=selected_variant,
-        confidence_score=round(confidence * 100.0, 2),
-    )
+    if text:
+        selected_variant = "vlm_chat_completions" if engine == "open_weight_vlm" else "image_to_string"
+        return _scored_result(
+            text=text,
+            engine=engine,
+            selected_variant=selected_variant,
+            confidence_score=round(confidence * 100.0, 2),
+        )
+
+    results: list[OCRResult] = [
+        _scored_result(
+            text=text,
+            engine=engine,
+            selected_variant="image_to_string",
+            confidence_score=round(confidence * 100.0, 2),
+        )
+    ]
+    try:
+        from PIL import Image
+
+        image = Image.open(str(image_path))
+        if shutil.which("tesseract"):
+            for variant_name, variant in preprocess_image_variants(image):
+                for config in ("--psm 6", "--psm 11", "--psm 4"):
+                    result = _ocr_tesseract_variant(variant, variant_name, config)
+                    if result.text or result.warnings:
+                        results.append(result)
+        easyocr_result = _ocr_easyocr_image(image)
+        if easyocr_result.text or easyocr_result.warnings:
+            results.append(easyocr_result)
+    except Exception as exc:
+        results.append(OCRResult(warnings=[f"Image path OCR fallback failed: {exc}"]))
+    return choose_best_ocr_result(results)
 
 
 def _ocr_best_engine_image(image) -> OCRResult:
